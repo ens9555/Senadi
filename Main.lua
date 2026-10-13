@@ -1,4 +1,114 @@
 --[[
+	MasensDev Hub - Main.lua (Key System + Hub)
+	Created for MasensDev
+]]
+
+-- ==========================================
+-- KONFIGURASI KEY (UBAH BAGIAN INI)
+-- ==========================================
+local KEY_LINK = "https://link-target.net/9347872/7RtKPjiaj3bW"   -- link yang otomatis tersalin saat tombol "Get Link" ditekan
+
+local VALID_KEYS = {                                      -- daftar key yang berlaku
+	"SENADINEW",
+	"SENADINEW",
+}
+
+-- (Opsional) Daftar key dari file online, satu key per baris. Contoh:
+-- "https://raw.githubusercontent.com/ens9555/Senadi/main/keys.txt"
+-- Dengan ini Anda bisa ganti key tanpa mengubah script. Kosongkan ("") jika tidak dipakai.
+local KEY_LIST_URL = ""
+
+local KEY_DURATION = 12 * 60 * 60                         -- masa berlaku key (12 jam, dalam detik)
+local SAVE_FILE = "MasensDevHub_Key.json"                 -- file penyimpanan key di perangkat pemain
+-- ==========================================
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+
+local env = (typeof(getgenv) == "function" and getgenv()) or _G
+
+-- ==========================================
+-- PENYIMPANAN KEY (DataStore sisi client)
+-- ==========================================
+-- Catatan: DataStoreService Roblox hanya bisa dipakai dari server game, bukan dari
+-- script executor. Sebagai gantinya key + waktu disimpan di file lokal (writefile).
+-- Jika executor tidak mendukung file, penyimpanan memakai memori selama game berjalan.
+
+local function now()
+	local ok, t = pcall(function() return workspace:GetServerTimeNow() end)
+	if ok and type(t) == "number" then return math.floor(t) end
+	return os.time()
+end
+
+local function canUseFiles()
+	return typeof(writefile) == "function" and typeof(readfile) == "function" and typeof(isfile) == "function"
+end
+
+local function saveKey(key)
+	local data = { key = key, time = now() }
+	env.MasensDevKeyData = data
+	if canUseFiles() then
+		pcall(function() writefile(SAVE_FILE, HttpService:JSONEncode(data)) end)
+	end
+end
+
+local function loadSavedKey()
+	if canUseFiles() then
+		local ok, data = pcall(function()
+			if isfile(SAVE_FILE) then
+				return HttpService:JSONDecode(readfile(SAVE_FILE))
+			end
+		end)
+		if ok and type(data) == "table" then return data end
+	end
+	return env.MasensDevKeyData
+end
+
+local function clearSavedKey()
+	env.MasensDevKeyData = nil
+	if canUseFiles() then
+		pcall(function() writefile(SAVE_FILE, "") end)
+	end
+end
+
+-- ==========================================
+-- VALIDASI KEY
+-- ==========================================
+local function trim(s)
+	return (tostring(s):match("^%s*(.-)%s*$"))
+end
+
+local function getValidKeys()
+	local keys = {}
+	for _, k in ipairs(VALID_KEYS) do
+		keys[#keys + 1] = trim(k)
+	end
+	if KEY_LIST_URL ~= "" then
+		pcall(function()
+			local body = game:HttpGet(KEY_LIST_URL)
+			for line in string.gmatch(body, "[^\r\n]+") do
+				local k = trim(line)
+				if k ~= "" then keys[#keys + 1] = k end
+			end
+		end)
+	end
+	return keys
+end
+
+local function isValidKey(key)
+	for _, k in ipairs(getValidKeys()) do
+		if k == key then return true end
+	end
+	return false
+end
+
+-- ==========================================
+-- HUB UTAMA (dijalankan setelah key valid)
+-- ==========================================
+local function StartHub()
+--[[
 	MasensDev Hub - Mount Valhalla / Universal Utility
 	Created for MasensDev
 ]]
@@ -258,7 +368,7 @@ create("TextLabel", {
 	Position = UDim2.new(0, 14, 0, 23),
 	Size = UDim2.new(1, -70, 0, 14),
 	Font = Enum.Font.Gotham,
-	Text = "Mount Valhalla  •  Universal Utility",
+	Text = "Mount Senadi  •  Universal Utility",
 	TextColor3 = Theme.SubText,
 	TextSize = 11,
 	TextXAlignment = Enum.TextXAlignment.Left,
@@ -1148,3 +1258,323 @@ end)
 -- INIT
 -- ==========================================
 selectTab("Main")
+
+end -- akhir StartHub
+
+-- ==========================================
+-- GUI KEY
+-- ==========================================
+local function ShowKeyGui()
+	local Theme = {
+		Bg      = Color3.fromRGB(16, 16, 22),
+		Header  = Color3.fromRGB(22, 22, 30),
+		Card    = Color3.fromRGB(30, 30, 41),
+		Hover   = Color3.fromRGB(40, 40, 54),
+		Accent  = Color3.fromRGB(124, 92, 255),
+		Accent2 = Color3.fromRGB(70, 170, 255),
+		Text    = Color3.fromRGB(240, 240, 248),
+		SubText = Color3.fromRGB(150, 150, 172),
+		Stroke  = Color3.fromRGB(52, 52, 70),
+		Ok      = Color3.fromRGB(70, 200, 120),
+		Warn    = Color3.fromRGB(255, 190, 80),
+		Danger  = Color3.fromRGB(235, 80, 90),
+	}
+
+	local function create(class, props, parent)
+		local obj = Instance.new(class)
+		for k, v in pairs(props) do obj[k] = v end
+		if parent then obj.Parent = parent end
+		return obj
+	end
+	local function corner(obj, r) return create("UICorner", { CornerRadius = UDim.new(0, r) }, obj) end
+	local function stroke(obj, color, th)
+		return create("UIStroke", { Color = color or Theme.Stroke, Thickness = th or 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, obj)
+	end
+	local function tween(obj, t, props)
+		TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
+	end
+
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	if playerGui:FindFirstChild("MasensDevKey") then
+		playerGui.MasensDevKey:Destroy()
+	end
+
+	local gui = create("ScreenGui", {
+		Name = "MasensDevKey",
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 1000,
+	}, playerGui)
+
+	local frame = create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.fromOffset(360, 250),
+		BackgroundColor3 = Theme.Bg,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+	}, gui)
+	corner(frame, 12)
+	stroke(frame, Theme.Stroke, 1)
+
+	local scale = create("UIScale", {}, frame)
+	local function fit()
+		local cam = workspace.CurrentCamera
+		if not cam then return 1 end
+		local vp = cam.ViewportSize
+		return math.clamp(math.min(vp.X / 400, vp.Y / 290), 0.5, 1)
+	end
+	local target = fit()
+	scale.Scale = target * 0.85
+	TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = target }):Play()
+
+	-- Header
+	local header = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 44),
+		BackgroundColor3 = Theme.Header,
+		BorderSizePixel = 0,
+	}, frame)
+	local line = create("Frame", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 2),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+	}, header)
+	create("UIGradient", { Color = ColorSequence.new(Theme.Accent, Theme.Accent2) }, line)
+
+	create("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 16, 0, 5),
+		Size = UDim2.new(1, -70, 0, 20),
+		Font = Enum.Font.GothamBold,
+		Text = "MasensDev Hub",
+		TextColor3 = Theme.Text,
+		TextSize = 16,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, header)
+	create("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 16, 0, 25),
+		Size = UDim2.new(1, -70, 0, 14),
+		Font = Enum.Font.Gotham,
+		Text = "Verifikasi Key",
+		TextColor3 = Theme.SubText,
+		TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, header)
+
+	local closeBtn = create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -10, 0.5, -1),
+		Size = UDim2.fromOffset(28, 28),
+		BackgroundColor3 = Theme.Card,
+		AutoButtonColor = false,
+		Font = Enum.Font.GothamBold,
+		Text = "X",
+		TextColor3 = Theme.Text,
+		TextSize = 13,
+	}, header)
+	corner(closeBtn, 14)
+	closeBtn.MouseEnter:Connect(function() tween(closeBtn, 0.15, { BackgroundColor3 = Theme.Danger }) end)
+	closeBtn.MouseLeave:Connect(function() tween(closeBtn, 0.15, { BackgroundColor3 = Theme.Card }) end)
+	closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+	-- Drag (mouse + touch)
+	do
+		local dragging, dragStart, startPos = false, nil, nil
+		header.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				dragStart = input.Position
+				startPos = frame.Position
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then dragging = false end
+				end)
+			end
+		end)
+		UserInputService.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				local d = input.Position - dragStart
+				frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+			end
+		end)
+	end
+
+	-- Deskripsi
+	create("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 20, 0, 54),
+		Size = UDim2.new(1, -40, 0, 34),
+		Font = Enum.Font.Gotham,
+		Text = "Tekan Get Link untuk mengambil key, lalu tempel key di kolom bawah dan tekan Check Key.",
+		TextColor3 = Theme.SubText,
+		TextSize = 12,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+	}, frame)
+
+	-- Input key
+	local keyBox = create("TextBox", {
+		Position = UDim2.new(0, 20, 0, 94),
+		Size = UDim2.new(1, -40, 0, 38),
+		BackgroundColor3 = Theme.Card,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamMedium,
+		PlaceholderText = "Masukkan key di sini...",
+		PlaceholderColor3 = Theme.SubText,
+		Text = "",
+		TextColor3 = Theme.Text,
+		TextSize = 14,
+		ClearTextOnFocus = false,
+	}, frame)
+	corner(keyBox, 8)
+	local keyStroke = stroke(keyBox, Theme.Stroke, 1)
+	create("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }, keyBox)
+	keyBox.Focused:Connect(function() tween(keyStroke, 0.15, { Color = Theme.Accent }) end)
+	keyBox.FocusLost:Connect(function() tween(keyStroke, 0.15, { Color = Theme.Stroke }) end)
+
+	-- Tombol Get Link
+	local getLinkBtn = create("TextButton", {
+		Position = UDim2.new(0, 20, 0, 142),
+		Size = UDim2.new(0.5, -25, 0, 38),
+		BackgroundColor3 = Theme.Card,
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		Text = "Get Link",
+		TextColor3 = Theme.Text,
+		TextSize = 13,
+	}, frame)
+	corner(getLinkBtn, 8)
+	stroke(getLinkBtn, Theme.Stroke, 1)
+	getLinkBtn.MouseEnter:Connect(function() tween(getLinkBtn, 0.15, { BackgroundColor3 = Theme.Hover }) end)
+	getLinkBtn.MouseLeave:Connect(function() tween(getLinkBtn, 0.15, { BackgroundColor3 = Theme.Card }) end)
+
+	-- Tombol Check Key
+	local checkBtn = create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -20, 0, 142),
+		Size = UDim2.new(0.5, -25, 0, 38),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamBold,
+		Text = "Check Key",
+		TextColor3 = Color3.new(1, 1, 1),
+		TextSize = 13,
+	}, frame)
+	corner(checkBtn, 8)
+	create("UIGradient", { Color = ColorSequence.new(Theme.Accent, Theme.Accent2), Rotation = 20 }, checkBtn)
+
+	-- Status & footer
+	local status = create("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 20, 0, 188),
+		Size = UDim2.new(1, -40, 0, 30),
+		Font = Enum.Font.GothamMedium,
+		Text = "",
+		TextColor3 = Theme.SubText,
+		TextSize = 12,
+		TextWrapped = true,
+		TextYAlignment = Enum.TextYAlignment.Top,
+	}, frame)
+
+	create("TextLabel", {
+		AnchorPoint = Vector2.new(0, 1),
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 0, 1, -8),
+		Size = UDim2.new(1, 0, 0, 14),
+		Font = Enum.Font.Gotham,
+		Text = "Key berlaku " .. math.floor(KEY_DURATION / 3600) .. " jam  •  by MasensDev",
+		TextColor3 = Theme.SubText,
+		TextSize = 11,
+	}, frame)
+
+	local function setStatus(text, color)
+		status.Text = text
+		status.TextColor3 = color or Theme.SubText
+	end
+
+	local function shake()
+		task.spawn(function()
+			local base = frame.Position
+			for _ = 1, 3 do
+				frame.Position = base + UDim2.fromOffset(8, 0)
+				task.wait(0.04)
+				frame.Position = base - UDim2.fromOffset(8, 0)
+				task.wait(0.04)
+			end
+			frame.Position = base
+		end)
+	end
+
+	-- Get Link -> salin link ke clipboard
+	getLinkBtn.MouseButton1Click:Connect(function()
+		local copyFn = (typeof(setclipboard) == "function" and setclipboard)
+			or (typeof(toclipboard) == "function" and toclipboard)
+			or nil
+		local copied = false
+		if copyFn then
+			copied = pcall(copyFn, KEY_LINK)
+		end
+		if copied then
+			setStatus("Link berhasil disalin! Buka browser lalu tempel (paste) link-nya.", Theme.Ok)
+		else
+			setStatus("Executor tidak mendukung copy. Salin manual: " .. KEY_LINK, Theme.Warn)
+		end
+	end)
+
+	-- Check Key
+	local busy = false
+	checkBtn.MouseButton1Click:Connect(function()
+		if busy then return end
+		local key = trim(keyBox.Text)
+		if key == "" then
+			setStatus("Masukkan key terlebih dahulu.", Theme.Warn)
+			shake()
+			return
+		end
+
+		busy = true
+		setStatus("Memeriksa key...", Theme.SubText)
+		task.spawn(function()
+			if isValidKey(key) then
+				saveKey(key)
+				setStatus("Key valid! Membuka hub...", Theme.Ok)
+				task.wait(0.8)
+				gui:Destroy()
+				StartHub()
+			else
+				setStatus("Key salah atau sudah tidak berlaku.", Theme.Danger)
+				shake()
+				busy = false
+			end
+		end)
+	end)
+end
+
+-- ==========================================
+-- START: cek key tersimpan (12 jam)
+-- ==========================================
+local saved = loadSavedKey()
+local keyStillValid = false
+
+if type(saved) == "table" and saved.key and tonumber(saved.time) then
+	local age = now() - tonumber(saved.time)
+	if age >= 0 and age < KEY_DURATION and isValidKey(trim(saved.key)) then
+		keyStillValid = true
+		local remaining = KEY_DURATION - age
+		print(string.format("[MasensDev] Key masih aktif, sisa %d jam %d menit",
+			math.floor(remaining / 3600), math.floor((remaining % 3600) / 60)))
+	else
+		clearSavedKey() -- sudah lewat 12 jam / key sudah dicabut -> wajib input key lagi
+	end
+end
+
+if keyStillValid then
+	StartHub()
+else
+	ShowKeyGui()
+end
