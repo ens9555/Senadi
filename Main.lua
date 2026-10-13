@@ -633,6 +633,127 @@ local function createInputNumber(parent, labelText, defaultValue, minValue, maxV
 	end)
 end
 
+-- Dropdown pilihan (klik untuk buka daftar, klik opsi untuk memilih)
+local function createDropdown(parent, labelText, options, defaultValue, callback)
+	local current = defaultValue
+	local isListOpen = false
+
+	local wrapper = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+	}, parent)
+	create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, wrapper)
+
+	local head = create("TextButton", {
+		LayoutOrder = 1,
+		Size = UDim2.new(1, 0, 0, 40),
+		BackgroundColor3 = Theme.Card,
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Text = "",
+	}, wrapper)
+	corner(head, 8)
+	local headStroke = stroke(head, Theme.Stroke, 1)
+
+	create("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 12, 0, 0),
+		Size = UDim2.new(0.35, -12, 1, 0),
+		Font = Enum.Font.GothamMedium,
+		Text = labelText,
+		TextColor3 = Theme.SubText,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, head)
+
+	local valueLabel = create("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0.35, 0, 0, 0),
+		Size = UDim2.new(0.65, -34, 1, 0),
+		Font = Enum.Font.GothamBold,
+		Text = current,
+		TextColor3 = Theme.Text,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	}, head)
+
+	local arrow = create("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.fromOffset(14, 14),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = "v",
+		TextColor3 = Theme.Accent2,
+		TextSize = 13,
+	}, head)
+
+	local list = create("ScrollingFrame", {
+		LayoutOrder = 2,
+		Size = UDim2.new(1, 0, 0, 150),
+		BackgroundColor3 = Theme.Sidebar,
+		BorderSizePixel = 0,
+		Visible = false,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = Theme.Accent,
+	}, wrapper)
+	corner(list, 8)
+	stroke(list, Theme.Stroke, 1)
+	create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+	create("UIPadding", {
+		PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
+		PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4),
+	}, list)
+
+	local optionButtons = {}
+	local function renderOptions()
+		for name, b in pairs(optionButtons) do
+			local selected = (name == current)
+			b.BackgroundColor3 = selected and Theme.Accent or Theme.Card
+			b.TextColor3 = selected and Color3.new(1, 1, 1) or Theme.Text
+		end
+	end
+
+	local function setListOpen(value)
+		isListOpen = value
+		list.Visible = value
+		arrow.Text = value and "^" or "v"
+		tween(headStroke, 0.15, { Color = value and Theme.Accent or Theme.Stroke })
+	end
+
+	for i, name in ipairs(options) do
+		local b = create("TextButton", {
+			LayoutOrder = i,
+			Size = UDim2.new(1, -4, 0, 28),
+			BackgroundColor3 = Theme.Card,
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			Font = Enum.Font.GothamMedium,
+			Text = name,
+			TextColor3 = Theme.Text,
+			TextSize = 12,
+		}, list)
+		corner(b, 6)
+		b.MouseButton1Click:Connect(function()
+			current = name
+			valueLabel.Text = name
+			renderOptions()
+			setListOpen(false)
+			callback(name)
+		end)
+		optionButtons[name] = b
+	end
+	renderOptions()
+
+	head.MouseEnter:Connect(function() tween(head, 0.15, { BackgroundColor3 = Theme.CardHover }) end)
+	head.MouseLeave:Connect(function() tween(head, 0.15, { BackgroundColor3 = Theme.Card }) end)
+	head.MouseButton1Click:Connect(function() setListOpen(not isListOpen) end)
+end
+
 -- ==========================================
 -- TOMBOL BUKA / TUTUP GUI (BULAT "MD")
 -- ==========================================
@@ -962,6 +1083,13 @@ end)
 
 local playerSection = createSection(playerPage, "Pemain di Server")
 
+local refreshPlayerList
+
+createButton(playerPage, "Refresh Daftar Pemain", function()
+	refreshPlayerList()
+	notify("Daftar diperbarui: " .. (#Players:GetPlayers() - 1) .. " pemain lain di server")
+end)
+
 local searchBox = create("TextBox", {
 	Size = UDim2.new(1, 0, 0, 34),
 	BackgroundColor3 = Theme.Card,
@@ -986,8 +1114,6 @@ local playerListHolder = create("Frame", {
 	BackgroundTransparency = 1,
 }, playerPage)
 create("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, playerListHolder)
-
-local refreshPlayerList
 
 local function buildPlayerCard(plr, order)
 	local isSelected = (plr == selectedTargetPlayer)
@@ -1052,6 +1178,11 @@ local function buildPlayerCard(plr, order)
 end
 
 refreshPlayerList = function()
+	-- target yang sudah keluar dari server dilepas otomatis
+	if selectedTargetPlayer and selectedTargetPlayer.Parent ~= Players then
+		selectedTargetPlayer = nil
+		updateSelectedCard()
+	end
 	for _, child in ipairs(playerListHolder:GetChildren()) do
 		if child:IsA("GuiObject") then child:Destroy() end
 	end
@@ -1103,9 +1234,34 @@ refreshPlayerList()
 -- ==========================================
 -- TAB 3: OTOMATIS
 -- ==========================================
+createSection(autoPage, "Teleport Checkpoint")
+
+local cpNames = {}
+for i = 1, 30 do
+	cpNames[#cpNames + 1] = "Checkpoint " .. i
+end
+cpNames[#cpNames + 1] = "Summit"
+
+local selectedCP = cpNames[1]
+createDropdown(autoPage, "Tujuan", cpNames, selectedCP, function(value)
+	selectedCP = value
+end)
+
+createButton(autoPage, "Teleport ke Checkpoint Terpilih", function()
+	local root = myRoot()
+	local pos = checkpointCoords[selectedCP]
+	if root and pos then
+		root.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+		notify("Teleport ke " .. selectedCP)
+	else
+		notify("Karakter belum siap")
+	end
+end)
+
 createSection(autoPage, "Auto Checkpoint")
 
-createInputNumber(autoPage, "Batas Kecepatan TP (studs/s)", 50, 5, 500, function(value)
+-- Tanpa batas maksimal (minimal 1 stud/s)
+createInputNumber(autoPage, "Kecepatan Otomatis CP (studs/s)", 50, 1, math.huge, function(value)
 	teleportSpeed = value
 end)
 
@@ -1131,7 +1287,7 @@ local function smoothTeleportTo(target, run)
 
 	local startPos = root.Position
 	local distance = (target - startPos).Magnitude
-	local duration = distance / math.clamp(teleportSpeed, 5, 500)
+	local duration = distance / math.max(teleportSpeed, 1)
 	local elapsed = 0
 
 	while elapsed < duration and isRunActive(run) do
@@ -1147,19 +1303,53 @@ local function smoothTeleportTo(target, run)
 	end
 end
 
-local function autoCPLoop(run)
+-- Tunggu sampai karakter hidup & siap
+local function waitUntilAlive(run)
 	while isRunActive(run) do
-		local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
-		local cpValue = leaderstats and leaderstats:FindFirstChild("CP")
+		local hum = myHumanoid()
+		if myRoot() and hum and hum.Health > 0 then break end
+		task.wait(0.25)
+	end
+end
 
-		-- CP = 0 / tidak ada leaderstats -> mulai dari 1, selain itu lanjut dari CP saat ini
+-- Matikan karakter (setelah Summit), lalu tunggu respawn
+local function killCharacter(run)
+	local oldChar = LocalPlayer.Character
+	local hum = myHumanoid()
+	if hum then hum.Health = 0 end
+
+	local waited = 0
+	while isRunActive(run) and LocalPlayer.Character == oldChar and waited < 15 do
+		task.wait(0.25)
+		waited += 0.25
+	end
+
+	waitUntilAlive(run)
+	if isRunActive(run) then task.wait(1.5) end -- beri waktu game menaruh karakter di spawn
+end
+
+local function autoCPLoop(run)
+	-- Siklus pertama mengikuti CP di leaderstats, siklus berikutnya (setelah Summit) mulai dari 1
+	local useSavedProgress = true
+
+	while isRunActive(run) do
+		waitUntilAlive(run)
+
 		local startIndex = 1
-		if cpValue and cpValue.Value > 0 then
-			startIndex = math.clamp(math.floor(cpValue.Value), 1, 30)
+		if useSavedProgress then
+			local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+			local cpValue = leaderstats and leaderstats:FindFirstChild("CP")
+			if cpValue and cpValue.Value > 0 then
+				startIndex = math.clamp(math.floor(cpValue.Value), 1, 30)
+			end
 		end
+		useSavedProgress = false
 
 		for i = startIndex, 30 do
 			if not isRunActive(run) then break end
+			waitUntilAlive(run) -- jika mati di tengah jalan, tunggu respawn lalu lanjut
+			if not isRunActive(run) then break end
+
 			local cpName = "Checkpoint " .. i
 			if checkpointCoords[cpName] then
 				statusLabel.Text = "Status: menuju " .. cpName
@@ -1171,6 +1361,15 @@ local function autoCPLoop(run)
 		if isRunActive(run) and checkpointCoords["Summit"] then
 			statusLabel.Text = "Status: menuju Summit"
 			smoothTeleportTo(checkpointCoords["Summit"], run)
+
+			if isRunActive(run) then
+				statusLabel.Text = "Status: Summit! karakter di-reset..."
+				task.wait(1)
+				killCharacter(run)
+				if isRunActive(run) then
+					statusLabel.Text = "Status: mengulang dari Checkpoint 1"
+				end
+			end
 		end
 
 		task.wait(1)
