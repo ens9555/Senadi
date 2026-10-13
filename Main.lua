@@ -1312,20 +1312,19 @@ local function waitUntilAlive(run)
 	end
 end
 
--- Matikan karakter (setelah Summit), lalu tunggu respawn
-local function killCharacter(run)
-	local oldChar = LocalPlayer.Character
-	local hum = myHumanoid()
-	if hum then hum.Health = 0 end
-
-	local waited = 0
-	while isRunActive(run) and LocalPlayer.Character == oldChar and waited < 15 do
-		task.wait(0.25)
-		waited += 0.25
+-- Reset checkpoint lewat RemoteEvent (dipanggil setelah menyentuh Summit)
+local function resetCheckpoint(run)
+	local remote = game:GetService("ReplicatedStorage"):FindFirstChild("ResetCPEvent")
+	if remote then
+		local ok = pcall(function() remote:FireServer() end)
+		if not ok then notify("Gagal memanggil ResetCPEvent") end
+	else
+		notify("ResetCPEvent tidak ditemukan di ReplicatedStorage")
 	end
 
+	-- beri waktu server memproses reset, lalu pastikan karakter siap
+	if isRunActive(run) then task.wait(2) end
 	waitUntilAlive(run)
-	if isRunActive(run) then task.wait(1.5) end -- beri waktu game menaruh karakter di spawn
 end
 
 local function autoCPLoop(run)
@@ -1363,9 +1362,9 @@ local function autoCPLoop(run)
 			smoothTeleportTo(checkpointCoords["Summit"], run)
 
 			if isRunActive(run) then
-				statusLabel.Text = "Status: Summit! karakter di-reset..."
+				statusLabel.Text = "Status: Summit! reset checkpoint..."
 				task.wait(1)
-				killCharacter(run)
+				resetCheckpoint(run)
 				if isRunActive(run) then
 					statusLabel.Text = "Status: mengulang dari Checkpoint 1"
 				end
